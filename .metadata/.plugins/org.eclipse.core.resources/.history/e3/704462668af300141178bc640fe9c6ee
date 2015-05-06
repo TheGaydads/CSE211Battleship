@@ -1,0 +1,478 @@
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.net.Socket;
+
+
+/**
+ * Class that defines a runnable object (extends Thread) that can handle a
+ * single client. It plays a single game of battleship.
+ */
+class BattleshipThread extends Thread {
+
+	// Handle for the Socket used for communicating with a
+	// client.
+	private Socket socket = null;
+
+	// Name of client
+	private String clientName = "";
+
+	private static final int MAX_GUESSES = 40;
+	private static final int NUM_ROWS = 15;
+	private static final int NUM_COLUMNS = 15;
+	private static final int MISS = 10;
+	private static final int HIT = 20;
+	private static final int SINK = 30;
+	private static final int CONNECTIONDISCONNECTED = 40;
+	private static final int GAME_CONTINUES = 10;
+	private static final int GAME_OVER = 20;
+	private static final int OKTOSEND = 1;
+	private static final int DONTSEND = 0;
+	private static final char AIRCRAFT_CARRIER = 'A';
+	private static final char  BATTLESHIP = 'B';
+	private static final char CRUISER = 'C';
+	private static final char DESTROYER = 'D';
+	private static final char SUBMARINE = 'S';
+	private static final int AIRCRAFT_CARRIER_NUMBER = 5;
+	private static final int  BATTLESHIP_NUMBER = 4;
+	private static final int CRUISER_NUMBER = 3;
+	private static final int SUBMARINE_NUMBER = 6;
+	private static final int DESTROYER_NUMBER = 2;
+	private static final int CHECKIFPLAYING = 300;
+	private final int UPDATEBOARD = 50;
+	private int [][] opponentBoard;
+
+	private DataOutputStream dos = null;
+	private DataInputStream dis = null;
+
+	private int rowGuess;
+	private int columnGuess;
+	int moveStatus;
+	private int gameStatus;
+	int board[][];
+	int numGuesses = 0;
+	int sunkAircraftCarrier = 4, sunkBattleship = 4, sunkCruiser = 3,
+			sunkDestroyer = 2, sunkSubmarine = 3;
+	//private final BattleshipServer bs;
+
+
+
+	/**
+	 * Sets up class data members. Displays communication info. This constructor
+	 * sets up a BattleshipServer and runs a game of battleship.
+	 */
+	public BattleshipThread(Socket socket, int clientNumber) {
+		// Call the super class (Thread) constructor.
+		super("TCPListenThread_" + clientNumber);
+
+		// Save a reference to the Socket connection
+		// to the client.
+		this.socket = socket;
+
+		//this.bs = bs;
+
+		displayClientInfo();
+
+		// Set up the game
+		createBoard();
+
+		try {
+			createClientStreams();
+		} catch (IOException e) {
+
+		}
+
+		receiveName();
+
+
+		//printBoard();
+
+
+	} // end TCPListenThreadconstructor
+
+	public void newGame() {
+		
+		System.out.println("NEW GAME!!!");
+		createBoard();
+		for (int i = 0; i < 5; i++ ) {
+			getShip();
+		}
+		numGuesses = 0;
+		sunkAircraftCarrier = 4;
+		sunkBattleship = 4;
+		sunkCruiser = 3;
+		sunkDestroyer = 2;
+		sunkSubmarine = 3;
+	}
+
+	/**
+	 * Displays IP address and port number information associated with a
+	 * particular client.
+	 */
+	protected void displayClientInfo() {
+		// Display IP address and port number client is using.
+		System.out.println(" IP address: " + socket.getInetAddress()
+				+ "\nClient Port number: " + socket.getPort());
+
+	} // end displayClientInfo
+
+	/**
+	 * This method sets up input and output streams to communicate between the
+	 * client and server.
+	 * 
+	 * @throws IOException
+	 */
+	protected void createClientStreams() throws IOException {
+		try {
+			dos = new DataOutputStream(socket.getOutputStream());
+			dis = new DataInputStream(socket.getInputStream());
+		} catch (IOException e) {
+
+		}
+
+	} // end createClientStreams
+
+	/**
+	 * Overides run method of the Thread class. Create appropriate stream
+	 * objects for receiving numeric data from a client. Closes out the Socket
+	 * connection after all data has been received.
+	 * 
+	 * @see java.lang.Thread#run()
+	 */
+	public void run() {
+		//for (int i = 0; i < 5; i++ ) {
+		//getShip();
+		//}
+
+	}// end run
+
+	public boolean receiveIsPlayingAgain() {
+		int isPlayingAgain = 0;
+		try {
+			dos.writeInt(OKTOSEND);
+			System.out.println("SENT CHECKIFPLAYING IN RECIEVESIPLAYINGAGAIN");
+			isPlayingAgain = dis.readInt();
+			System.out.println("READ ISPLAYINGAGAIN = " + isPlayingAgain);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+		if (isPlayingAgain == 0 ) {
+			return true;
+		}
+		else {
+			return false;
+		}
+
+
+
+	}
+
+	public void setOpponentBoard(int [][] opponentBoard) {
+		this.opponentBoard = opponentBoard;
+		System.out.println("Printing " + clientName + "'s Opponents Board");
+		for (int column = 0; column < NUM_COLUMNS; column++) {
+			for (int row = 0; row < NUM_ROWS; row++)
+				System.out.print("| " + opponentBoard[column][row] + " ");
+			System.out.println("|");
+		}
+	}
+
+	public synchronized void receiveName() {
+		try {
+			dos.writeInt(OKTOSEND);
+			clientName = dis.readUTF();
+			System.out.println("Client Name: " + clientName);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	public synchronized String getClientName() {
+		return clientName;
+	}
+
+	public synchronized int [] [] getBoard() {
+		return board;
+	}
+
+	public synchronized void receiveGuess() {
+		try {
+			dos.writeInt(OKTOSEND);
+			rowGuess = dis.readInt();
+			columnGuess = dis.readInt();
+			System.out.println("Client " + clientName + " : " + "Row: " + rowGuess);
+			System.out.println("Client " + clientName + " : " + "Column: " + columnGuess);
+			moveStatus = evaluateMove(rowGuess, columnGuess);
+			gameStatus = evaluateGame(moveStatus);
+
+			System.out.println("Thread writing moveStatus: " + moveStatus);
+			System.out.println("Thread writing gameStatus: " + gameStatus);
+			
+			dos.writeInt(moveStatus);
+			dos.writeInt(gameStatus);
+
+
+
+		} catch (IOException e) {
+			System.err.println("Getting Client " + clientName + "'s Guess Failed!");
+			closeConnection();
+			gameStatus = CONNECTIONDISCONNECTED;
+		}
+
+
+
+	}
+
+	public int getRowGuess() {
+		return rowGuess;
+	}
+	public int getColumnGuess() {
+		return columnGuess;
+	}
+
+	public int getMoveStatus() {
+		return moveStatus;
+	}
+
+	public int getGameStatus() {
+		return gameStatus;
+	}
+
+	public void sendMatchOver() {
+		try {
+			dos.writeInt(GAME_OVER);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+	public void sendMatchContinues() {
+		try {
+			dos.writeInt(GAME_CONTINUES);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	public void updateBoard(int row, int col, int moveStatus, int gameStatus) {
+
+		try {
+			dos.writeInt(UPDATEBOARD);
+			dos.writeInt(row);
+			dos.writeInt(col);
+			dos.writeInt(moveStatus);
+			dos.writeInt(gameStatus);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+
+	}
+
+	/**
+	 * This method uses our specified client-server protocol to receive ship locations
+	 */
+	protected void getShip() {
+		int shipType = 0;
+		int row = 0;
+		int col = 0;
+
+		//Get ship type
+		try {
+			shipType = dis.readChar();
+			if (shipType == AIRCRAFT_CARRIER) {
+
+				for (int i = 0; i < 5; i++) {
+					row = dis.readInt();
+					col = dis.readInt();
+					board[row][col] = AIRCRAFT_CARRIER_NUMBER;
+				}
+
+
+			}
+			if (shipType == BATTLESHIP) {
+				for (int i = 0; i < 4; i++) {
+					row = dis.readInt();
+					col = dis.readInt();
+					board[row][col] = BATTLESHIP_NUMBER;
+				}
+
+			}
+			if (shipType == CRUISER) {
+				for (int i = 0; i < 3; i++) {
+					row = dis.readInt();
+					col = dis.readInt();
+					board[row][col] = CRUISER_NUMBER;
+				}
+
+			}
+			if (shipType == SUBMARINE) {
+				for (int i = 0; i < 3; i++) {
+					row = dis.readInt();
+					col = dis.readInt();
+					board[row][col] = SUBMARINE_NUMBER;
+				}
+
+			}
+			if (shipType == DESTROYER) {
+				for (int i = 0; i < 2; i++) {
+					row = dis.readInt();
+					col = dis.readInt();
+					board[row][col] = DESTROYER_NUMBER;
+				}
+			}
+
+
+
+		} catch (IOException e) {
+		}
+
+
+
+	}
+
+	/**
+	 * This method receives two numbers from the client and evaluates them. The
+	 * server then sends back two numbers representing the move status and the
+	 * game status.
+	 * 
+	 * @throws IOException
+	 */
+	protected void sendAndReceiveNumbers() throws IOException {
+		// Read in two ints from the client
+		try {
+			rowGuess = dis.readInt();
+		} catch (IOException e) {
+
+		}
+		try {
+			columnGuess = dis.readInt();
+		} catch (IOException e) {
+
+		}
+
+
+		// Send two ints to the client
+		try {
+			dos.writeInt(moveStatus);
+		} catch (IOException e) {
+
+		}
+		try {
+			dos.writeInt(gameStatus);
+		} catch (IOException e) {
+
+		}
+	} // end sendAndReceiveNumbers
+
+	/**
+	 * This method evaluates the client's guess. It returns a 10 if it is a
+	 * miss, 20 if it is a hit, and 30 if it is a sink. It returns 40 if the
+	 * guess has already been guessed, which ends the game.
+	 * 
+	 * @return the int representing the move status
+	 */
+	protected int evaluateMove(int rowGuess, int columnGuess) {
+		if (opponentBoard[rowGuess][columnGuess] == 0) { // 0 marks no ship
+			opponentBoard[rowGuess][columnGuess] = -1; // -1 marks guessed spot
+			numGuesses++;
+			return MISS;
+		}
+		if (opponentBoard[rowGuess][columnGuess] == 5) { // 5 marks aircraft carrier
+			opponentBoard[rowGuess][columnGuess] = -2; // 5 marks hit ship
+			sunkAircraftCarrier++;
+			if (sunkAircraftCarrier == 5)
+				return SINK;
+			return HIT;
+		}
+		if (opponentBoard[rowGuess][columnGuess] == 4) { // 4 marks ship
+			opponentBoard[rowGuess][columnGuess] = -2; // 5 marks hit ship
+			sunkBattleship++;
+			if (sunkBattleship == 4)
+				return SINK;
+			return HIT;
+		}
+		if (opponentBoard[rowGuess][columnGuess] == 3) { // 1 marks ship
+			opponentBoard[rowGuess][columnGuess] = -2; // 5 marks hit ship
+			sunkCruiser++;
+			if (sunkCruiser == 3)
+				return SINK;
+			return HIT;
+		}
+		if (opponentBoard[rowGuess][columnGuess] == 2) { // 1 marks ship
+			opponentBoard[rowGuess][columnGuess] = -2; // 5 marks hit ship
+			sunkDestroyer++;
+			if (sunkDestroyer == 2)
+				return SINK;
+			return HIT;
+		}
+		if (opponentBoard[rowGuess][columnGuess] < 0) // -1 marks already guessed spot
+			return CONNECTIONDISCONNECTED;
+		return 0;
+	} // end evaluateMove
+
+	/**
+	 * This method determines whether the game is to continue or end. It returns
+	 * a 40 if the game is over because of an illegal move, a 30 if the server
+	 * won, and a 20 if the client won. I client wins by sinking all of the
+	 * ships.
+	 * 
+	 * @param moveStatus
+	 *            the number representing whether the client's guess was a miss,
+	 *            hit, or sink
+	 * @return an int representing whether the game is to end or continue
+	 */
+	protected int evaluateGame(int moveStatus) {
+		if (moveStatus == CONNECTIONDISCONNECTED) // illegal move, game over
+			return CONNECTIONDISCONNECTED;
+		if ((sunkAircraftCarrier == 5) && (sunkBattleship == 4)
+				&& (sunkCruiser == 3) && (sunkDestroyer == 2) && (sunkSubmarine == 3)) { // client wins
+			return GAME_OVER;
+		}
+		return GAME_CONTINUES;
+	} // end evaluateGame
+
+	/**
+	 * This method initializes the board to 2-d array of 0s.
+	 */
+	protected void createBoard() {
+		board = new int[NUM_ROWS][NUM_COLUMNS];
+
+		// initialize to 0
+		for (int column = 0; column < NUM_COLUMNS; column++) {
+			for (int row = 0; row < NUM_ROWS; row++)
+				board[column][row] = 0;
+		}
+	} // end createBoard
+
+	/**
+	 * This method prints the board to the console.
+	 */
+	protected void printBoard() {
+		// print each element of the board
+		for (int column = 0; column < NUM_COLUMNS; column++) {
+			for (int row = 0; row < NUM_ROWS; row++)
+				System.out.print("| " + board[column][row] + " ");
+			System.out.println("|");
+		}
+	} // end printBoard
+
+	/**
+	 * This method closes the client/server connection.
+	 */
+	protected void closeConnection() {
+		try {
+			socket.close();
+			dis.close();
+			dos.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	} // end closeServerConnection
+
+} // end TCPListenThread class
